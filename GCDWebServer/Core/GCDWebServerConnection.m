@@ -780,6 +780,17 @@ static inline BOOL _CompareResources(NSString* responseETag, NSString* requestET
 - (GCDWebServerResponse*)overrideResponse:(GCDWebServerResponse*)response forRequest:(GCDWebServerRequest*)request {
   if ((response.statusCode >= 200) && (response.statusCode < 300) && _CompareResources(response.eTag, request.ifNoneMatch, response.lastModifiedDate, request.ifModifiedSince)) {
     NSInteger code = [request.method isEqualToString:@"HEAD"] || [request.method isEqualToString:@"GET"] ? kGCDWebServerHTTPStatusCode_NotModified : kGCDWebServerHTTPStatusCode_PreconditionFailed;
+    
+    // In some cases, the ETag comparison in the If-None-Match check can
+    // return a false positive when the file contents is actually different.
+    // This may be due to the use of file system node IDs to generate the
+    // ETags, rather than hashing the file contents. This additional check
+    // ensures that if the request cache age is set to zero (ie. do not
+    // cache) then a 304 (not modified) response will not be returned.
+    if (code == kGCDWebServerHTTPStatusCode_NotModified && response.cacheControlMaxAge == 0) {
+      return response;
+    }
+    
     GCDWebServerResponse* newResponse = [GCDWebServerResponse responseWithStatusCode:code];
     newResponse.cacheControlMaxAge = response.cacheControlMaxAge;
     newResponse.lastModifiedDate = response.lastModifiedDate;
